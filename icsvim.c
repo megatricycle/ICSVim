@@ -4,33 +4,40 @@
 #define TERMINAL_WIDTH 80
 #define BODY_HEIGHT 20
 #define TILDE_WIDTH 2
+#define DEFAULT_LINE_NUMBER_SPACE 4
+#define CURSOR_X_MIN 4
+#define CURSOR_X_MAX 4
+
+#define KEY_LEFT  -106
+#define KEY_DOWN -104
+#define KEY_UP  -105
+#define KEY_RIGHT -103
 
 void print_top_bar() {
     int i;
     
+    textbackground(LIGHTGRAY);
     for(i = 0; i < TERMINAL_WIDTH; i++) {
-        textbackground(LIGHTGRAY);
         printf(" ");
     }
 }
 
-void print_line(int line_number) {
-    // @TODO: Make width dynamic
+void print_line(int line_number, char *text) {
     int i;
         
     textbackground(BLACK);
     // render line number
-    for(i = 0; i < 3; i++) {
-        textbackground(BLACK);
+    for(i = 0; i < DEFAULT_LINE_NUMBER_SPACE - digit_count(line_number); i++) {
         printf(" ");
     }
     
     textcolor(YELLOW);
-    printf("%i", line_number);
+    printf("%i ", line_number);
     
-    for(i = 0; i < TERMINAL_WIDTH - 4; i++) {
-        textbackground(BLACK);
-        textcolor(WHITE);
+    textbackground(BLACK);
+    textcolor(WHITE);
+    printf("%s", text);
+    for(i = 0; i < TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - digit_count(line_number) + digit_count(line_number) - strlen(text) - 1; i++) {
         printf(" ");
     }
 }
@@ -42,9 +49,9 @@ void print_empty_line() {
     textcolor(BLUE);
     printf(" ~");
     
+    textbackground(BLACK);
+    textcolor(WHITE);
     for(i = 0; i < TERMINAL_WIDTH - TILDE_WIDTH; i++) {
-        textbackground(BLACK);
-        textcolor(WHITE);
         printf(" ");
     }
 }
@@ -73,23 +80,62 @@ void print_status_bar(char *filename, int current_line_number) {
     printf(" ");
 }
 
-void render() {
+int get_number_of_lines(char *file_buffer) {
+    char file_buffer_cpy[1024];
+    char *ptr;
+    int number_of_lines = 0;
+    
+    // get number of lines    
+    strcpy(file_buffer_cpy, file_buffer);
+    
+    ptr = strtok(file_buffer_cpy, "\n");
+    
+    while(ptr != NULL) {
+        number_of_lines++;
+        
+        ptr = strtok(NULL, "\n");
+    }
+    
+    return number_of_lines;
+}
+
+void render(int current_line_number, char *file_buffer) {
     int i, j;
-    int current_line_number = 1; // hardcoded
-    int max_line_number = 1; // hardcoded as of now
+    int number_of_lines;
+    char *ptr;
+    char file_buffer_cpy[1024];
     
     clrscr();
+    
+    number_of_lines = get_number_of_lines(file_buffer);
+    
+    char char_buffer[number_of_lines][TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - 1];
+    
+    // save to char buffer
+    strcpy(file_buffer_cpy, file_buffer);
+    
+    int line = 0;
+    
+    ptr = strtok(file_buffer_cpy, "\n");
+    
+    while(ptr != NULL) {
+        strcpy(char_buffer[line], ptr);
+        
+        line++;
+        
+        ptr = strtok(NULL, "\n");
+    }
     
     // render top bar
     print_top_bar();
     
     // render valid lines
-    for(i = 0; i < max_line_number; i++) {
-        print_line(i + 1);
+    for(i = 0; i < number_of_lines; i++) {
+        print_line(i + 1, char_buffer[i]);
     }
     
     // render empty lines
-    for(i = 0; i < BODY_HEIGHT - max_line_number; i++) {
+    for(i = 0; i < BODY_HEIGHT - number_of_lines; i++) {
         print_empty_line();
     }
     
@@ -106,14 +152,30 @@ void render() {
 }
 
 int main() {
-    int i, j;
+    int cursor_x = 5, cursor_y = 1;
+    int user_input;
+    char file_buffer[] = "Ignorance is your new bestfriend.\nParamore\nSome testing andddddd\nNew line!";
+    
+    render(1, file_buffer);
     
     while(1) {
-        render();
-    
-        update_cursor(1, 5);
+        update_cursor(cursor_y, cursor_x);
         
-        getch();
+        user_input = getch();
+        
+        // handle user input
+        if(user_input == KEY_UP) {
+            cursor_y--;
+        }
+        if(user_input == KEY_DOWN) {
+            cursor_y++;
+        }
+        if(user_input == KEY_RIGHT) {
+            cursor_x++;
+        }
+        if(user_input == KEY_LEFT) {
+            cursor_x--;
+        }
         
         textcolor(WHITE);
     }

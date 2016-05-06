@@ -34,3 +34,14 @@ void itoa(int n, char s[]) {
     s[i] = '\0';
     reverse(s);
 }
+
+int digit_count(int x) {
+    int count = 1;
+    
+    while(x > 9) {
+        x /= 10;
+        count++;
+    }
+    
+    return count;
+}
