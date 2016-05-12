@@ -7,6 +7,7 @@
 #define DEFAULT_LINE_NUMBER_SPACE 4
 #define CURSOR_X_MIN 4
 #define CURSOR_X_MAX 4
+#define CURSOR_Y_MIN 2
 
 #define KEY_LEFT  -106
 #define KEY_DOWN -104
@@ -22,7 +23,7 @@ void print_top_bar() {
     }
 }
 
-void print_line(int line_number, char *text) {
+void print_line(int line_number, char *text, int cursor_x, int cursor_y) {
     int i;
         
     textbackground(BLACK);
@@ -36,13 +37,35 @@ void print_line(int line_number, char *text) {
     
     textbackground(BLACK);
     textcolor(WHITE);
-    printf("%s", text);
+    for(i = 0; i < strlen(text); i++) {
+        // render cursor if applicable
+        if(line_number == cursor_y && (i + 5) == cursor_x) {
+            textbackground(WHITE);
+            textcolor(BLACK);
+            printf("%c", text[i]);
+            textbackground(BLACK);
+            textcolor(WHITE);
+        }
+        else {
+            printf("%c", text[i]);
+        }
+    }
     for(i = 0; i < TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - digit_count(line_number) + digit_count(line_number) - strlen(text) - 1; i++) {
-        printf(" ");
+        // render cursor if applicable
+        if(line_number == cursor_y && (i + 5 + strlen(text)) == cursor_x) {
+            textbackground(WHITE);
+            textcolor(BLACK);
+            printf(" ");
+            textbackground(BLACK);
+            textcolor(WHITE);
+        }
+        else {
+            printf(" ");
+        }
     }
 }
 
-void print_empty_line() {
+void print_empty_line(int line_number, int cursor_x, int cursor_y) {
     int i;
     
     textbackground(BLACK);
@@ -99,50 +122,28 @@ int get_number_of_lines(char *file_buffer) {
     return number_of_lines;
 }
 
-void render(int current_line_number, char *file_buffer) {
+void render(char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
     int i, j;
-    int number_of_lines;
-    char *ptr;
-    char file_buffer_cpy[1024];
     
     clrscr();
-    
-    number_of_lines = get_number_of_lines(file_buffer);
-    
-    char char_buffer[number_of_lines][TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - 1];
-    
-    // save to char buffer
-    strcpy(file_buffer_cpy, file_buffer);
-    
-    int line = 0;
-    
-    ptr = strtok(file_buffer_cpy, "\n");
-    
-    while(ptr != NULL) {
-        strcpy(char_buffer[line], ptr);
-        
-        line++;
-        
-        ptr = strtok(NULL, "\n");
-    }
     
     // render top bar
     print_top_bar();
     
     // render valid lines
     for(i = 0; i < number_of_lines; i++) {
-        print_line(i + 1, char_buffer[i]);
+        print_line(i + 1, char_buffer[i], cursor_x, cursor_y);
     }
     
     // render empty lines
     for(i = 0; i < BODY_HEIGHT - number_of_lines; i++) {
-        print_empty_line();
+        print_empty_line(i + 1, cursor_x, cursor_y);
     }
     
     char filename[] = "dummyfile.txt"; // hardcoded
     
     // render lower bar
-    print_status_bar(filename, current_line_number);
+    print_status_bar(filename, cursor_y);
     
     // render command line
     textcolor(WHITE);
@@ -151,33 +152,91 @@ void render(int current_line_number, char *file_buffer) {
     // empty space
 }
 
+void cursor_up(int *cursor_y, char char_buffer[][75], int *cursor_x) {
+    if(*cursor_y > 1) {
+        (*cursor_y)--;
+        
+        // handle case when there's no text directly above
+        if(*cursor_x > strlen(char_buffer[*cursor_y - 1])) {
+            *cursor_x = strlen(char_buffer[*cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE + 1;
+        }
+    }
+}
+
+void cursor_down(int *cursor_y, int number_of_lines, char char_buffer[][75], int *cursor_x) {
+    if(*cursor_y < number_of_lines) {
+        (*cursor_y)++;
+        
+        // handle case when there's no text directly below
+        if(*cursor_x > strlen(char_buffer[*cursor_y - 1])) {
+            *cursor_x = strlen(char_buffer[*cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE + 1;
+        }
+    }
+}
+
+void cursor_left(int *cursor_x) {
+    if(*cursor_x > 5) {
+        (*cursor_x)--;
+    }
+}
+
+void cursor_right(int *cursor_x, int max) {
+    if(*cursor_x < max + 1) {
+        (*cursor_x)++;
+    }
+}
+
 int main() {
     int cursor_x = 5, cursor_y = 1;
     int user_input;
+    int number_of_lines;
     char file_buffer[] = "Ignorance is your new bestfriend.\nParamore\nSome testing andddddd\nNew line!";
-    
-    render(1, file_buffer);
+    char file_buffer_cpy[1024];
+    char *ptr;
     
     while(1) {
+        // @TODO: functionalize
+        number_of_lines = get_number_of_lines(file_buffer);
+    
+        char char_buffer[number_of_lines][TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - 1];
+        
+        // save to char buffer
+        strcpy(file_buffer_cpy, file_buffer);
+        
+        int line = 0;
+        
+        ptr = strtok(file_buffer_cpy, "\n");
+        
+        while(ptr != NULL) {
+            strcpy(char_buffer[line], ptr);
+            
+            line++;
+            
+            ptr = strtok(NULL, "\n");
+        }
+        // @END
+        
+        render(char_buffer, number_of_lines, cursor_x, cursor_y);
+        
+        textcolor(WHITE);
+        
         update_cursor(cursor_y, cursor_x);
         
         user_input = getch();
         
         // handle user input
         if(user_input == KEY_UP) {
-            cursor_y--;
+            cursor_up(&cursor_y, char_buffer, &cursor_x);
         }
         if(user_input == KEY_DOWN) {
-            cursor_y++;
+            cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
         }
         if(user_input == KEY_RIGHT) {
-            cursor_x++;
+            cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
         }
         if(user_input == KEY_LEFT) {
-            cursor_x--;
+            cursor_left(&cursor_x);
         }
-        
-        textcolor(WHITE);
     }
     
     return 0;
