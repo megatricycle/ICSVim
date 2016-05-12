@@ -8,11 +8,16 @@
 #define CURSOR_X_MIN 4
 #define CURSOR_X_MAX 4
 #define CURSOR_Y_MIN 2
+#define COMMAND_LINE_NUMBER 22
 
 #define KEY_LEFT  -106
 #define KEY_DOWN -104
 #define KEY_UP  -105
 #define KEY_RIGHT -103
+#define KEY_BACKSPACE 8
+#define KEY_ENTER 10
+
+typedef enum { NORMAL_MODE, COMMAND_MODE } mode;
 
 void print_top_bar() {
     int i;
@@ -122,7 +127,7 @@ int get_number_of_lines(char *file_buffer) {
     return number_of_lines;
 }
 
-void render(char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
+void render(char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y, int state, char *command_buffer, char *status_buffer) {
     int i, j;
     
     clrscr();
@@ -147,7 +152,16 @@ void render(char char_buffer[][75], int number_of_lines, int cursor_x, int curso
     
     // render command line
     textcolor(WHITE);
-    printf("This is currently a test mode. No features are available.");
+    if(state == COMMAND_MODE) {
+        char command_text[256] = ":";
+        
+        strcat(command_text, command_buffer);
+        
+        printf("%s", command_text);
+    }
+    else if(state == NORMAL_MODE) {
+        printf("%s", status_buffer);
+    }
     
     // empty space
 }
@@ -186,13 +200,63 @@ void cursor_right(int *cursor_x, int max) {
     }
 }
 
+void set_state(mode *old_state, mode new_state) {
+    *old_state = new_state;
+}
+
+void add_to_command_buffer(char *command_buffer, char input, int command_cursor) {
+    int len = strlen(command_buffer);
+    int i;
+    
+    for(i = len - 1; i >= command_cursor; i--) {
+        command_buffer[i + 1] = command_buffer[i];
+    }
+    
+    command_buffer[command_cursor] = input;
+    command_buffer[len + 1] = '\0';
+}
+
+void backspace_command_buffer(char *command_buffer, int command_cursor) {
+    int len = strlen(command_buffer);
+    int i;
+    
+    if(command_cursor > 0) {
+        for(i = command_cursor - 1; i < strlen(command_buffer); i++) {
+            command_buffer[i] = command_buffer[i + 1];
+        }
+        
+        command_buffer[len - 1] = '\0';
+    }
+}
+
+void command_cursor_left(int *command_cursor) {
+    if(*command_cursor > 0) {
+        (*command_cursor)--;
+    }
+}
+
+void command_cursor_right(int *command_cursor, char *command_buffer) {
+    if(*command_cursor < strlen(command_buffer)) {
+        (*command_cursor)++;
+    }
+}
+
+void set_status(char *status_buffer, char *new_status) {
+    strcpy(status_buffer, new_status);
+}
+
 int main() {
     int cursor_x = 5, cursor_y = 1;
     int user_input;
     int number_of_lines;
-    char file_buffer[] = "Ignorance is your new bestfriend.\nParamore\nSome testing andddddd\nNew line!";
+    char file_buffer[] = "Ignorance is your new bestfriend.\nParamore\nSome testing andddddd\nNew line!";   
     char file_buffer_cpy[1024];
     char *ptr;
+    char command_buffer[256];
+    int command_cursor;
+    char status_buffer[256] = "";
+    
+    mode state = NORMAL_MODE;
     
     while(1) {
         // @TODO: functionalize
@@ -216,26 +280,73 @@ int main() {
         }
         // @END
         
-        render(char_buffer, number_of_lines, cursor_x, cursor_y);
+        render(char_buffer, number_of_lines, cursor_x, cursor_y, state, command_buffer, status_buffer);
         
         textcolor(WHITE);
         
-        update_cursor(cursor_y, cursor_x);
+        // set cursor 
+        if(state == NORMAL_MODE) {
+            update_cursor(cursor_y, cursor_x);
+        }
+        else if(state == COMMAND_MODE) {
+            update_cursor(COMMAND_LINE_NUMBER, command_cursor + 2);
+        }
         
         user_input = getch();
         
         // handle user input
-        if(user_input == KEY_UP) {
-            cursor_up(&cursor_y, char_buffer, &cursor_x);
+        if(state == NORMAL_MODE) {
+            if(user_input == KEY_UP) {
+                cursor_up(&cursor_y, char_buffer, &cursor_x);
+            }
+            if(user_input == KEY_DOWN) {
+                cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
+            }
+            if(user_input == KEY_RIGHT) {
+                cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            if(user_input == KEY_LEFT) {
+                cursor_left(&cursor_x);
+            }
+            
+            if(user_input == ':') {
+                set_state(&state, COMMAND_MODE);
+                command_cursor = 0;
+                
+                // clear status buffer
+                strcpy(status_buffer, "");
+            }
         }
-        if(user_input == KEY_DOWN) {
-            cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
-        }
-        if(user_input == KEY_RIGHT) {
-            cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
-        }
-        if(user_input == KEY_LEFT) {
-            cursor_left(&cursor_x);
+        else if(state == COMMAND_MODE) {
+            // if printable character
+            if(user_input >= 32 && user_input <= 126) {
+                add_to_command_buffer(command_buffer, user_input, command_cursor);
+                command_cursor_right(&command_cursor, command_buffer);
+            }
+            else if(user_input == KEY_BACKSPACE) {
+                backspace_command_buffer(command_buffer, command_cursor);
+                command_cursor_left(&command_cursor);
+            }
+            else if(user_input == KEY_LEFT) {
+                command_cursor_left(&command_cursor);
+            }
+            else if(user_input == KEY_RIGHT) {
+                command_cursor_right(&command_cursor, command_buffer);
+            }
+            else if(user_input == KEY_ENTER) {
+                // process command buffer
+                if(strcmp(command_buffer, "q") == 0) {
+                    clrscr();
+                    exit(0);
+                }
+                else {
+                    set_state(&state, NORMAL_MODE);
+                    set_status(status_buffer, "Not an editor command.");
+                }
+                
+                // clear command buffer
+                strcpy(command_buffer, "");
+             }
         }
     }
     
