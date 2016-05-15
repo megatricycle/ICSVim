@@ -45,3 +45,8 @@ int digit_count(int x) {
     
     return count;
 }
+
+void charToString(char *dest, char input) {
+    dest[0] = input;
+    dest[1] = '\0';
+}

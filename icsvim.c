@@ -5,19 +5,21 @@
 #define BODY_HEIGHT 20
 #define TILDE_WIDTH 2
 #define DEFAULT_LINE_NUMBER_SPACE 4
-#define CURSOR_X_MIN 4
-#define CURSOR_X_MAX 4
-#define CURSOR_Y_MIN 2
+#define CURSOR_X_MIN 5
+#define CURSOR_Y_MIN 1
 #define COMMAND_LINE_NUMBER 22
 
+#define KEY_HOME -110
+#define KEY_END -109
 #define KEY_LEFT  -106
 #define KEY_DOWN -104
 #define KEY_UP  -105
 #define KEY_RIGHT -103
 #define KEY_BACKSPACE 8
 #define KEY_ENTER 10
+#define KEY_ESC 27
 
-typedef enum { NORMAL_MODE, COMMAND_MODE } mode;
+typedef enum { NORMAL_MODE, COMMAND_MODE, INSERT_MODE, VISUAL_MODE } mode;
 
 void print_top_bar() {
     int i;
@@ -162,6 +164,16 @@ void render(char char_buffer[][75], int number_of_lines, int cursor_x, int curso
     else if(state == NORMAL_MODE) {
         printf("%s", status_buffer);
     }
+    else if(state == INSERT_MODE) {
+        textcolor(YELLOW);
+        printf("-- INSERT --");
+        textcolor(WHITE);
+    }
+    else if(state == VISUAL_MODE) {
+        textcolor(YELLOW);
+        printf("-- VISUAL --");
+        textcolor(WHITE);
+    }
     
     // empty space
 }
@@ -189,7 +201,7 @@ void cursor_down(int *cursor_y, int number_of_lines, char char_buffer[][75], int
 }
 
 void cursor_left(int *cursor_x) {
-    if(*cursor_x > 5) {
+    if(*cursor_x > CURSOR_X_MIN) {
         (*cursor_x)--;
     }
 }
@@ -200,20 +212,64 @@ void cursor_right(int *cursor_x, int max) {
     }
 }
 
+void cursor_home(int *cursor_x) {
+    *cursor_x = CURSOR_X_MIN;
+}
+
+void cursor_end(int *cursor_x, int max) {
+    *cursor_x = max + 1;
+}
+
 void set_state(mode *old_state, mode new_state) {
     *old_state = new_state;
 }
 
-void add_to_command_buffer(char *command_buffer, char input, int command_cursor) {
-    int len = strlen(command_buffer);
+void add_to_buffer_cursor(char *buffer, char input, int cursor_pos) {
+    int len = strlen(buffer);
     int i;
     
-    for(i = len - 1; i >= command_cursor; i--) {
-        command_buffer[i + 1] = command_buffer[i];
+    for(i = len; i >= cursor_pos; i--) {
+        buffer[i + 1] = buffer[i];
     }
     
-    command_buffer[command_cursor] = input;
-    command_buffer[len + 1] = '\0';
+    buffer[cursor_pos] = input;
+}
+
+void remove_from_buffer_cursor(char *buffer, int cursor_pos) {
+    int len = strlen(buffer);
+    int i;
+    
+    if(cursor_pos > 0 && cursor_pos < strlen(buffer) + 1) {
+        for(i = cursor_pos - 1; i < strlen(buffer); i++) {
+            buffer[i] = buffer[i + 1];
+        }
+        
+        buffer[len - 1] = '\0';
+    }
+}
+
+void clear_buffer(char *buffer) {
+    strcpy(buffer, "");
+}
+
+void reconstruct_file_buffer(char *file_buffer, char char_buffer[][75], int number_of_lines) {
+    int i;
+    
+    clear_buffer(file_buffer);
+    
+    for(i = 0; i < number_of_lines; i++) {
+        strcat(file_buffer, char_buffer[i]);
+        
+        if(i < number_of_lines - 1) {
+            strcat(file_buffer, "\n");
+        }
+    }
+}
+
+void backspace_insert_buffer(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
+    remove_from_buffer_cursor(char_buffer[cursor_y - 1], cursor_x);
+    
+    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines);
 }
 
 void backspace_command_buffer(char *command_buffer, int command_cursor) {
@@ -245,13 +301,87 @@ void set_status(char *status_buffer, char *new_status) {
     strcpy(status_buffer, new_status);
 }
 
+void add_to_buffer(char *buffer, char input) {
+    char temp[2];
+    
+    charToString(temp, input);
+    
+    strcat(buffer, temp);
+}
+
+void process_input_buffer(char *input_buffer, mode *state, int *cursor_x, int *cursor_y, int right_max, char *file_buffer, char char_buffer[][75], int number_of_lines) {
+    int i;
+    char modifier_buffer[256] = "";
+    char command_buffer[256] = "";
+    
+    for(i = 0; i < strlen(input_buffer); i++) {
+        // if number
+        if(input_buffer[i] >= '0' && input_buffer[i] <= '9') {
+            add_to_buffer(modifier_buffer, input_buffer[i]);
+        }
+        else if(input_buffer[i] >= 32 && input_buffer[i] <= 126) {
+            add_to_buffer(command_buffer, input_buffer[i]);
+            
+            // process command buffer
+            if(strcmp(command_buffer, "i") == 0) {
+                *state = INSERT_MODE;
+                clear_buffer(input_buffer);
+            }
+            else if(strcmp(command_buffer, "v") == 0) {
+                *state = VISUAL_MODE;
+                clear_buffer(input_buffer);
+            }
+            else if(strcmp(command_buffer, "a") == 0) {
+                cursor_right(cursor_x, right_max);
+                *state = INSERT_MODE;
+                clear_buffer(input_buffer);
+            }
+            else if(strcmp(command_buffer, "x") == 0) {
+                for(i = 0; i < atoi(modifier_buffer); i++) {
+                    backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, *cursor_x - DEFAULT_LINE_NUMBER_SPACE, *cursor_y);
+                }
+                clear_buffer(input_buffer);
+            }
+            else {
+                clear_buffer(input_buffer);
+            }
+        }
+    }
+}
+
+void add_to_file_buffer(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y, char user_input) {
+    int i;
+    
+    add_to_buffer_cursor(char_buffer[cursor_y - 1], user_input, cursor_x - DEFAULT_LINE_NUMBER_SPACE - 1);
+    
+    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines);
+}
+
+void construct_char_buffer(char *file_buffer, char char_buffer[][75]) {
+    char file_buffer_cpy[1024];
+    char *ptr;
+    
+    strcpy(file_buffer_cpy, file_buffer);
+        
+    int line = 0;
+    
+    ptr = strtok(file_buffer_cpy, "\n");
+    
+    while(ptr != NULL) {
+        strcpy(char_buffer[line], ptr);
+        
+        line++;
+        
+        ptr = strtok(NULL, "\n");
+    }
+}
+
 int main() {
     int cursor_x = 5, cursor_y = 1;
     int user_input;
     int number_of_lines;
-    char file_buffer[] = "Ignorance is your new bestfriend.\nParamore\nSome testing andddddd\nNew line!";   
-    char file_buffer_cpy[1024];
-    char *ptr;
+    char file_buffer[1024] = "This is a sample file.\nConfused.";
+    char input_buffer[256] = "";
     char command_buffer[256];
     int command_cursor;
     char status_buffer[256] = "";
@@ -264,28 +394,14 @@ int main() {
     
         char char_buffer[number_of_lines][TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - 1];
         
-        // save to char buffer
-        strcpy(file_buffer_cpy, file_buffer);
-        
-        int line = 0;
-        
-        ptr = strtok(file_buffer_cpy, "\n");
-        
-        while(ptr != NULL) {
-            strcpy(char_buffer[line], ptr);
-            
-            line++;
-            
-            ptr = strtok(NULL, "\n");
-        }
-        // @END
+        construct_char_buffer(file_buffer, char_buffer);
         
         render(char_buffer, number_of_lines, cursor_x, cursor_y, state, command_buffer, status_buffer);
         
         textcolor(WHITE);
         
         // set cursor 
-        if(state == NORMAL_MODE) {
+        if(state == NORMAL_MODE || state == INSERT_MODE || state == VISUAL_MODE) {
             update_cursor(cursor_y, cursor_x);
         }
         else if(state == COMMAND_MODE) {
@@ -299,28 +415,55 @@ int main() {
             if(user_input == KEY_UP) {
                 cursor_up(&cursor_y, char_buffer, &cursor_x);
             }
-            if(user_input == KEY_DOWN) {
+            else if(user_input == KEY_DOWN) {
                 cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
             }
-            if(user_input == KEY_RIGHT) {
+            else if(user_input == KEY_RIGHT) {
                 cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
             }
-            if(user_input == KEY_LEFT) {
-                cursor_left(&cursor_x);
+            else if(user_input == KEY_LEFT) {
+                if(cursor_x > CURSOR_X_MIN) {
+                    cursor_left(&cursor_x);
+                }
+                else if(cursor_y > CURSOR_Y_MIN){
+                    cursor_up(&cursor_y, char_buffer, &cursor_x);
+                    cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
             }
-            
-            if(user_input == ':') {
+            else if(user_input == KEY_HOME) {
+                cursor_home(&cursor_x);
+            }
+            else if(user_input == KEY_END) {
+                cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_BACKSPACE) {
+                if(cursor_x > CURSOR_X_MIN) {
+                    cursor_left(&cursor_x);
+                }
+                else if(cursor_y > CURSOR_Y_MIN){
+                    cursor_up(&cursor_y, char_buffer, &cursor_x);
+                    cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
+            }
+            else if(user_input == ':') {
                 set_state(&state, COMMAND_MODE);
                 command_cursor = 0;
                 
                 // clear status buffer
-                strcpy(status_buffer, "");
+                clear_buffer(status_buffer);
+            }
+            else if(user_input >= 32 && user_input <= 126) {
+                add_to_buffer(input_buffer, user_input);
+                process_input_buffer(input_buffer, &state, &cursor_x, &cursor_y, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE, file_buffer, char_buffer, number_of_lines);
+            }
+            else if(user_input == KEY_ESC){
+                clear_buffer(input_buffer);
             }
         }
         else if(state == COMMAND_MODE) {
             // if printable character
             if(user_input >= 32 && user_input <= 126) {
-                add_to_command_buffer(command_buffer, user_input, command_cursor);
+                add_to_buffer_cursor(command_buffer, user_input, command_cursor);
                 command_cursor_right(&command_cursor, command_buffer);
             }
             else if(user_input == KEY_BACKSPACE) {
@@ -345,8 +488,82 @@ int main() {
                 }
                 
                 // clear command buffer
-                strcpy(command_buffer, "");
-             }
+                clear_buffer(command_buffer);
+            }
+            else if(user_input == KEY_ESC) {
+                clear_buffer(command_buffer);
+                set_state(&state, NORMAL_MODE);
+            }
+        }
+        else if(state == INSERT_MODE) {
+            if(user_input == KEY_UP) {
+                cursor_up(&cursor_y, char_buffer, &cursor_x);
+            }
+            else if(user_input == KEY_DOWN) {
+                cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
+            }
+            else if(user_input == KEY_RIGHT) {
+                cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_LEFT) {
+                if(cursor_x > CURSOR_X_MIN) {
+                    cursor_left(&cursor_x);
+                }
+                else if(cursor_y > CURSOR_Y_MIN){
+                    cursor_up(&cursor_y, char_buffer, &cursor_x);
+                    cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
+            }
+            else if(user_input == KEY_HOME) {
+                cursor_home(&cursor_x);
+            }
+            else if(user_input == KEY_END) {
+                cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_ESC) {
+                set_state(&state, NORMAL_MODE);
+            }
+            else if(user_input == KEY_BACKSPACE) {
+                backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, cursor_x - DEFAULT_LINE_NUMBER_SPACE - 1, cursor_y);
+                cursor_left(&cursor_x);
+            }
+            else if(user_input >= 32 && user_input <= 126) {
+                add_to_file_buffer(file_buffer, char_buffer, number_of_lines, cursor_x, cursor_y, user_input);
+                cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_ENTER) {
+                add_to_file_buffer(file_buffer, char_buffer, number_of_lines, cursor_x, cursor_y, '\n');
+                cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
+            }
+        }
+        else if(state == VISUAL_MODE) {
+            if(user_input == KEY_UP) {
+                cursor_up(&cursor_y, char_buffer, &cursor_x);
+            }
+            else if(user_input == KEY_DOWN) {
+                cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
+            }
+            else if(user_input == KEY_RIGHT) {
+                cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_LEFT) {
+                if(cursor_x > CURSOR_X_MIN) {
+                    cursor_left(&cursor_x);
+                }
+                else if(cursor_y > CURSOR_Y_MIN){
+                    cursor_up(&cursor_y, char_buffer, &cursor_x);
+                    cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
+            }
+            else if(user_input == KEY_HOME) {
+                cursor_home(&cursor_x);
+            }
+            else if(user_input == KEY_END) {
+                cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+            }
+            else if(user_input == KEY_ESC) {
+                set_state(&state, NORMAL_MODE);
+            }
         }
     }
     
