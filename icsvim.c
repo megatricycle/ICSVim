@@ -455,7 +455,16 @@ void construct_char_buffer(char *file_buffer, char char_buffer[][75]) {
 }
 
 void read_file(char *file_buffer, char *file_name) {
+    FILE *fp;
+
+    fp = fopen(file_name, "r");
     
+    if(fp != NULL) {
+        fread(file_buffer, 1024, 1, fp);
+        fclose(fp);
+    }
+    
+    strcpy(file_name, file_name);
 }
 
 int main(int argc, char **argv) {
@@ -474,16 +483,7 @@ int main(int argc, char **argv) {
     
     if(argc > 1) {
         // read file
-        FILE *fp;
-
-        fp = fopen(argv[1], "r");
-        
-        if(fp != NULL) {
-            fread(file_buffer, 1024, 1, fp);
-            fclose(fp);
-        }
-        
-        strcpy(file_name, argv[1]);
+        read_file(file_buffer, argv[1]);
     }
     
     while(1) {
