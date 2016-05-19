@@ -479,8 +479,7 @@ int main(int argc, char **argv) {
         fp = fopen(argv[1], "r");
         
         if(fp != NULL) {
-            fgets(file_buffer, 1024, fp);
-            
+            fread(file_buffer, 1024, 1, fp);
             fclose(fp);
         }
         
