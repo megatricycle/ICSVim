@@ -17,6 +17,7 @@
 #define KEY_UP  -105
 #define KEY_RIGHT -103
 #define KEY_BACKSPACE 8
+#define KEY_TAB 9
 #define KEY_ENTER 10
 #define KEY_ESC 27
 
@@ -461,6 +462,7 @@ int main(int argc, char **argv) {
     int cursor_x = 5, cursor_y = 1;
     int user_input;
     int number_of_lines;
+    int i;
     char file_buffer[1024] = " ";
     char input_buffer[256] = "";
     char command_buffer[256];
@@ -667,6 +669,15 @@ int main(int argc, char **argv) {
             }
             else if(user_input == KEY_DELETE){
                 backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, cursor_x - DEFAULT_LINE_NUMBER_SPACE, cursor_y);
+            }
+            else if(user_input == KEY_TAB){
+                for(i = 0; i < 4; i++) {
+                    add_to_file_buffer(file_buffer, char_buffer, number_of_lines, cursor_x, cursor_y, ' ');
+                }
+                
+                for(i = 0; i < 4; i++) {
+                    cursor_right(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
             }
         }
         else if(state == VISUAL_MODE) {
