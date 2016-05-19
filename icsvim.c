@@ -593,6 +593,17 @@ int main(int argc, char **argv) {
                         set_status(status_buffer, status);
                     }
                 }
+                else if(strcmp(command_buffer, "wq") == 0) {
+                    if(strcmp(file_name, "") == 0) {
+                        set_status(status_buffer, "No file name.");
+                    }
+                    else {
+                        write_to_file(file_buffer, file_name);
+                        
+                        clrscr();
+                        exit(0);
+                    }
+                }
                 else if(command_buffer[0] == 'w' && command_buffer[1] == ' ') {
                     write_to_file(file_buffer, command_buffer + 2);
                     
