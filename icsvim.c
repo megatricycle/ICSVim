@@ -604,6 +604,15 @@ int main(int argc, char **argv) {
                     
                     set_status(status_buffer, status);
                 }
+                else if(strcmp(command_buffer, "o") == 0) {
+                    if(strcmp(file_name, "") == 0) {
+                        set_status(status_buffer, "No file name.");
+                    }
+                }
+                else if(command_buffer[0] == 'o' && command_buffer[1] == ' ') {
+                    read_file(file_buffer, command_buffer + 2);
+                    strcpy(file_name, command_buffer + 2);
+                }
                 else {
                     set_status(status_buffer, "Not an editor command.");
                 }
