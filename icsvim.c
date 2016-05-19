@@ -463,8 +463,6 @@ void read_file(char *file_buffer, char *file_name) {
         fread(file_buffer, 1024, 1, fp);
         fclose(fp);
     }
-    
-    strcpy(file_name, file_name);
 }
 
 int main(int argc, char **argv) {
@@ -484,6 +482,8 @@ int main(int argc, char **argv) {
     if(argc > 1) {
         // read file
         read_file(file_buffer, argv[1]);
+        
+        strcpy(file_name, argv[1]);
     }
     
     while(1) {
