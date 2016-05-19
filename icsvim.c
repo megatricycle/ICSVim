@@ -9,6 +9,7 @@
 #define CURSOR_Y_MIN 1
 #define COMMAND_LINE_NUMBER 22
 
+#define KEY_DELETE -111
 #define KEY_HOME -110
 #define KEY_END -109
 #define KEY_LEFT  -106
@@ -86,7 +87,7 @@ void print_empty_line(int line_number, int cursor_x, int cursor_y) {
     }
 }
 
-void print_status_bar(char *filename, int current_line_number) {
+void print_status_bar(char *file_name, int current_line_number) {
     int i;
     
     char status_message[80];
@@ -97,7 +98,14 @@ void print_status_bar(char *filename, int current_line_number) {
     // print status message
     textcolor(BLACK);
     strcpy(status_message, " [");
-    strcat(status_message, filename);
+    
+    if(strcmp(file_name, "") == 0) {
+        strcat(status_message, "New file");
+    }
+    else {
+        strcat(status_message, file_name);
+    }
+    
     strcat(status_message, "]  Line: ");
     itoa(current_line_number, current_line_number_buffer);
     strcat(status_message, current_line_number_buffer);
@@ -129,7 +137,7 @@ int get_number_of_lines(char *file_buffer) {
     return number_of_lines;
 }
 
-void render(char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y, int state, char *command_buffer, char *status_buffer) {
+void render(char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y, int state, char *command_buffer, char *status_buffer, char *file_name) {
     int i, j;
     
     clrscr();
@@ -147,10 +155,8 @@ void render(char char_buffer[][75], int number_of_lines, int cursor_x, int curso
         print_empty_line(i + 1, cursor_x, cursor_y);
     }
     
-    char filename[] = "dummyfile.txt"; // hardcoded
-    
     // render lower bar
-    print_status_bar(filename, cursor_y);
+    print_status_bar(file_name, cursor_y);
     
     // render command line
     textcolor(WHITE);
@@ -267,9 +273,24 @@ void reconstruct_file_buffer(char *file_buffer, char char_buffer[][75], int numb
 }
 
 void backspace_insert_buffer(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
-    remove_from_buffer_cursor(char_buffer[cursor_y - 1], cursor_x);
+    int i;
     
-    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines);
+    if(cursor_x == 0 && cursor_y > 0) {
+        // delete new line
+        strcat(char_buffer[cursor_y - 2], char_buffer[cursor_y - 1]);
+        
+        // y_shift
+        for(i = cursor_y - 1; i < number_of_lines - 1; i++) {
+            strcpy(char_buffer[i], char_buffer[i + 1]);
+        }
+        
+        reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines - 1);
+    }
+    else {
+        remove_from_buffer_cursor(char_buffer[cursor_y - 1], cursor_x);
+        
+        reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines);
+    }
 }
 
 void backspace_command_buffer(char *command_buffer, int command_cursor) {
@@ -309,6 +330,34 @@ void add_to_buffer(char *buffer, char input) {
     strcat(buffer, temp);
 }
 
+void delete_to_end_of_file(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
+    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines - (number_of_lines - cursor_y + 1));
+}
+
+void delete_to_end_of_line(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_x, int cursor_y) {
+    char_buffer[cursor_y - 1][cursor_x - DEFAULT_LINE_NUMBER_SPACE - 1] = '\0';
+    
+    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines);
+}
+
+void delete_line(char *file_buffer, char char_buffer[][75], int number_of_lines, int cursor_y) {
+    int i;
+    
+    for(i = cursor_y - 1; i < number_of_lines - 1; i++) {
+        strcpy(char_buffer[i], char_buffer[i + 1]);
+    }
+    
+    reconstruct_file_buffer(file_buffer, char_buffer, number_of_lines - 1);
+}
+
+void write_to_file(char *file_buffer, char *file_name) {
+    FILE *fp;
+
+    fp = fopen(file_name, "w+");
+    fputs(file_buffer, fp);
+    fclose(fp);
+}
+
 void process_input_buffer(char *input_buffer, mode *state, int *cursor_x, int *cursor_y, int right_max, char *file_buffer, char char_buffer[][75], int number_of_lines) {
     int i;
     char modifier_buffer[256] = "";
@@ -337,10 +386,38 @@ void process_input_buffer(char *input_buffer, mode *state, int *cursor_x, int *c
                 clear_buffer(input_buffer);
             }
             else if(strcmp(command_buffer, "x") == 0) {
+                if(strcmp(modifier_buffer, "") == 0) {
+                    strcpy(modifier_buffer, "1");
+                }
+                
                 for(i = 0; i < atoi(modifier_buffer); i++) {
                     backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, *cursor_x - DEFAULT_LINE_NUMBER_SPACE, *cursor_y);
                 }
                 clear_buffer(input_buffer);
+            }
+            else if(strcmp(command_buffer, "d") == 0) {
+                // wait for more input
+            }
+            else if(strcmp(command_buffer, "dd") == 0) {
+                if(strcmp(modifier_buffer, "") == 0) {
+                    strcpy(modifier_buffer, "1");
+                
+                }
+                for(i = 0; i < atoi(modifier_buffer); i++) {
+                    delete_line(file_buffer, char_buffer, number_of_lines, *cursor_y);
+                    number_of_lines--;
+                }
+                clear_buffer(input_buffer);
+            }
+            else if(strcmp(command_buffer, "d$") == 0) {
+                delete_to_end_of_line(file_buffer, char_buffer, number_of_lines, *cursor_x, *cursor_y);
+                clear_buffer(input_buffer);
+                cursor_left(cursor_x);
+            }
+            else if(strcmp(command_buffer, "dG") == 0) {
+                delete_to_end_of_file(file_buffer, char_buffer, number_of_lines, *cursor_x, *cursor_y);
+                clear_buffer(input_buffer);
+                cursor_up(cursor_y, char_buffer, cursor_x);
             }
             else {
                 clear_buffer(input_buffer);
@@ -367,7 +444,7 @@ void construct_char_buffer(char *file_buffer, char char_buffer[][75]) {
     
     ptr = strtok(file_buffer_cpy, "\n");
     
-    while(ptr != NULL) {
+    while(ptr != NULL) {        
         strcpy(char_buffer[line], ptr);
         
         line++;
@@ -376,27 +453,46 @@ void construct_char_buffer(char *file_buffer, char char_buffer[][75]) {
     }
 }
 
-int main() {
+void read_file(char *file_buffer, char *file_name) {
+    
+}
+
+int main(int argc, char **argv) {
     int cursor_x = 5, cursor_y = 1;
     int user_input;
     int number_of_lines;
-    char file_buffer[1024] = "This is a sample file.\nConfused.";
+    char file_buffer[1024] = " ";
     char input_buffer[256] = "";
     char command_buffer[256];
     int command_cursor;
     char status_buffer[256] = "";
+    char file_name[256] = "";
     
     mode state = NORMAL_MODE;
     
+    if(argc > 1) {
+        // read file
+        FILE *fp;
+
+        fp = fopen(argv[1], "r");
+        
+        if(fp != NULL) {
+            fgets(file_buffer, 1024, fp);
+            
+            fclose(fp);
+        }
+        
+        strcpy(file_name, argv[1]);
+    }
+    
     while(1) {
-        // @TODO: functionalize
         number_of_lines = get_number_of_lines(file_buffer);
     
         char char_buffer[number_of_lines][TERMINAL_WIDTH - DEFAULT_LINE_NUMBER_SPACE - 1];
         
         construct_char_buffer(file_buffer, char_buffer);
         
-        render(char_buffer, number_of_lines, cursor_x, cursor_y, state, command_buffer, status_buffer);
+        render(char_buffer, number_of_lines, cursor_x, cursor_y, state, command_buffer, status_buffer, file_name);
         
         textcolor(WHITE);
         
@@ -482,10 +578,36 @@ int main() {
                     clrscr();
                     exit(0);
                 }
+                else if(strcmp(command_buffer, "w") == 0) {
+                    if(strcmp(file_name, "") == 0) {
+                        set_status(status_buffer, "No file name.");
+                    }
+                    else {
+                        write_to_file(file_buffer, file_name);
+                        
+                        char status[2014] = "\"";
+                        strcat(status, file_name);
+                        strcat(status, "\" saved."); 
+                        
+                        set_status(status_buffer, status);
+                    }
+                }
+                else if(command_buffer[0] == 'w' && command_buffer[1] == ' ') {
+                    write_to_file(file_buffer, command_buffer + 2);
+                    
+                    char status[2014] = "\"";
+                    strcat(status, command_buffer + 2);
+                    strcat(status, "\" saved.");
+                    
+                    strcpy(file_name, command_buffer + 2); 
+                    
+                    set_status(status_buffer, status);
+                }
                 else {
-                    set_state(&state, NORMAL_MODE);
                     set_status(status_buffer, "Not an editor command.");
                 }
+                
+                set_state(&state, NORMAL_MODE);
                 
                 // clear command buffer
                 clear_buffer(command_buffer);
@@ -525,7 +647,14 @@ int main() {
             }
             else if(user_input == KEY_BACKSPACE) {
                 backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, cursor_x - DEFAULT_LINE_NUMBER_SPACE - 1, cursor_y);
-                cursor_left(&cursor_x);
+                
+                if(cursor_x == CURSOR_X_MIN && cursor_y > 0) {
+                    cursor_up(&cursor_y, char_buffer, &cursor_x);
+                    cursor_end(&cursor_x, strlen(char_buffer[cursor_y - 1]) + DEFAULT_LINE_NUMBER_SPACE);
+                }
+                else {
+                    cursor_left(&cursor_x);
+                }
             }
             else if(user_input >= 32 && user_input <= 126) {
                 add_to_file_buffer(file_buffer, char_buffer, number_of_lines, cursor_x, cursor_y, user_input);
@@ -534,6 +663,10 @@ int main() {
             else if(user_input == KEY_ENTER) {
                 add_to_file_buffer(file_buffer, char_buffer, number_of_lines, cursor_x, cursor_y, '\n');
                 cursor_down(&cursor_y, number_of_lines, char_buffer, &cursor_x);
+                cursor_home(&cursor_x);
+            }
+            else if(user_input == KEY_DELETE){
+                backspace_insert_buffer(file_buffer, char_buffer, number_of_lines, cursor_x - DEFAULT_LINE_NUMBER_SPACE, cursor_y);
             }
         }
         else if(state == VISUAL_MODE) {
